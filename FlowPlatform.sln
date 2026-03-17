@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36511.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Core", "AOI.Core\AOI.Core.csproj", "{82FD0FE1-180A-406A-88D0-F79BCCF4A72D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Infrastructure", "AOI.Infrastructure\AOI.Infrastructure.csproj", "{2247CAE5-B6F9-401D-8C87-3602A42AE5BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Device.Abstractions", "AOI.Device.Abstractions\AOI.Device.Abstractions.csproj", "{0F0A476B-F04C-43D5-8DC5-D68229FAA2E7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Device", "AOI.Device\AOI.Device.csproj", "{67C81CF8-FFEA-436E-8DEE-B8F6B62F8537}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Device.Plugins", "AOI.Device.Plugins\AOI.Device.Plugins.csproj", "{967AAEB9-CA71-4355-8848-A0FE389BB4DA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AOI.Flow", "AOI.Flow\AOI.Flow.csproj", "{7B773E7F-2AB9-4F3E-BAE2-1341DD510222}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{82FD0FE1-180A-406A-88D0-F79BCCF4A72D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82FD0FE1-180A-406A-88D0-F79BCCF4A72D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82FD0FE1-180A-406A-88D0-F79BCCF4A72D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82FD0FE1-180A-406A-88D0-F79BCCF4A72D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2247CAE5-B6F9-401D-8C87-3602A42AE5BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2247CAE5-B6F9-401D-8C87-3602A42AE5BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2247CAE5-B6F9-401D-8C87-3602A42AE5BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2247CAE5-B6F9-401D-8C87-3602A42AE5BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F0A476B-F04C-43D5-8DC5-D68229FAA2E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F0A476B-F04C-43D5-8DC5-D68229FAA2E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F0A476B-F04C-43D5-8DC5-D68229FAA2E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F0A476B-F04C-43D5-8DC5-D68229FAA2E7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{67C81CF8-FFEA-436E-8DEE-B8F6B62F8537}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{67C81CF8-FFEA-436E-8DEE-B8F6B62F8537}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{67C81CF8-FFEA-436E-8DEE-B8F6B62F8537}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{67C81CF8-FFEA-436E-8DEE-B8F6B62F8537}.Release|Any CPU.Build.0 = Release|Any CPU
+		{967AAEB9-CA71-4355-8848-A0FE389BB4DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{967AAEB9-CA71-4355-8848-A0FE389BB4DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{967AAEB9-CA71-4355-8848-A0FE389BB4DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{967AAEB9-CA71-4355-8848-A0FE389BB4DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7B773E7F-2AB9-4F3E-BAE2-1341DD510222}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7B773E7F-2AB9-4F3E-BAE2-1341DD510222}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7B773E7F-2AB9-4F3E-BAE2-1341DD510222}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7B773E7F-2AB9-4F3E-BAE2-1341DD510222}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {60C24FE0-1EC0-4DC3-A185-010D1A328AB4}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Cameras\" />
+    <Folder Include="Motion\" />
+    <Folder Include="IO\" />
+    <Folder Include="Laser\" />
+    <Folder Include="Light\" />
+    <Folder Include="Scanner\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AOI.Core\AOI.Core.csproj" />
+    <ProjectReference Include="..\AOI.Device.Abstractions\AOI.Device.Abstractions.csproj" />
+    <ProjectReference Include="..\AOI.Infrastructure\AOI.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
