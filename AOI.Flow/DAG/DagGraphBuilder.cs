@@ -31,7 +31,8 @@ public static class DagGraphBuilder
 
             from.Next.Add(to);
 
-            to.DependencyCount++;
+            to.InitialDependencyCount++;
+            to.RemainingDependencies++;
         }
 
         DetectCycle(graph);
@@ -43,10 +44,10 @@ public static class DagGraphBuilder
     {
         var dep = graph.Nodes.ToDictionary(
             n => n,
-            n => n.DependencyCount);
+            n => n.InitialDependencyCount);
 
         var queue = new Queue<DagRuntimeNode>(
-            graph.Nodes.Where(n => n.DependencyCount == 0));
+            graph.Nodes.Where(n => n.InitialDependencyCount == 0));
 
         int visited = 0;
 
