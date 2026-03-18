@@ -1,15 +1,22 @@
 using AOI.Flow.DAG;
+using AOI.Flow.EventBus;
 using AOI.Flow.Model;
 using System.Collections.Concurrent;
 
 namespace AOI.Flow.Engine;
 
+/// <summary>
+/// 工业级多Flow调度器 - 支持独立运行、资源隔离、优先级调度
+/// </summary>
 public class FlowScheduler : IDisposable
 {
-    private readonly ConcurrentDictionary<string, FlowInstance> _runningFlows = new();
-    private readonly SemaphoreSlim _globalConcurrencyLimiter;
+    private readonly ConcurrentDictionary<string, FlowInstance> _flows = new();
+    private readonly ConcurrentQueue<FlowInstance> _pendingQueue = new();
+    private readonly SemaphoreSlim _concurrencyLimiter;
     private readonly int _maxFlowConcurrency;
     private readonly int _maxNodeConcurrencyPerFlow;
+    private readonly CancellationTokenSource _schedulerCts = new();
+    private readonly Task _dispatchTask;
     private bool _disposed;
 
     public FlowScheduler(
@@ -18,68 +25,88 @@ public class FlowScheduler : IDisposable
     {
         _maxFlowConcurrency = maxFlowConcurrency;
         _maxNodeConcurrencyPerFlow = maxNodeConcurrencyPerFlow;
-        _globalConcurrencyLimiter = new SemaphoreSlim(maxFlowConcurrency);
+        _concurrencyLimiter = new SemaphoreSlim(maxFlowConcurrency);
+        _dispatchTask = Task.Run(DispatchLoopAsync);
     }
 
-    public IReadOnlyCollection<FlowInstance> RunningFlows => _runningFlows.Values.ToList();
+    #region Properties & Query
 
-    public async Task<FlowInstance> StartFlowAsync(
+    public IReadOnlyCollection<FlowInstance> RunningFlows => _flows.Values.Where(f => f.Status == FlowStatus.Running).ToList();
+    public IReadOnlyCollection<FlowInstance> AllFlows => _flows.Values.ToList();
+    public int PendingCount => _pendingQueue.Count;
+
+    public IEnumerable<FlowInstance> GetFlowsByStatus(FlowStatus status) => _flows.Values.Where(f => f.Status == status);
+    public IEnumerable<FlowInstance> GetFlowsByProduct(string productId) => _flows.Values.Where(f => f.ProductId == productId);
+    public IEnumerable<FlowInstance> GetFlowsByRecipe(string recipeId) => _flows.Values.Where(f => f.RecipeId == recipeId);
+
+    #endregion
+
+    #region Flow Lifecycle
+
+    public async Task<FlowInstance> ScheduleFlowAsync(
         FlowDefinition definition,
-        FlowContext context)
+        FlowContext context,
+        int priority = 0)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(FlowScheduler));
+        if (_disposed) throw new ObjectDisposedException(nameof(FlowScheduler));
 
-        // 等待全局并发许可
-        await _globalConcurrencyLimiter.WaitAsync(context.Token);
-
-        try
+        var runtimeGraph = DagGraphBuilder.Build(definition);
+        var instance = new FlowInstance(definition, context, runtimeGraph)
         {
-            // 构建运行时图（每个 Flow 有独立的运行时图）
-            var runtimeGraph = DagGraphBuilder.Build(definition);
+            Priority = priority,
+            EventBus = context.EventBus
+        };
 
-            // 创建 Flow 实例
-            var instance = new FlowInstance(definition, context, runtimeGraph);
+        instance.MarkQueued();
+        _flows[instance.Id] = instance;
+        _pendingQueue.Enqueue(instance);
 
-            // 添加到运行中的 Flow 集合
-            if (!_runningFlows.TryAdd(instance.Id, instance))
+        return instance;
+    }
+
+    private async Task DispatchLoopAsync()
+    {
+        while (!_schedulerCts.Token.IsCancellationRequested)
+        {
+            try
             {
-                throw new InvalidOperationException("Failed to register flow instance");
+                if (_pendingQueue.TryDequeue(out var instance))
+                {
+                    await _concurrencyLimiter.WaitAsync(_schedulerCts.Token);
+                    _ = ExecuteFlowWithIsolationAsync(instance);
+                }
+                else
+                {
+                    await Task.Delay(10, _schedulerCts.Token);
+                }
             }
-
-            // 启动 Flow 执行
-            instance.MarkStarted();
-            instance.ExecutionTask = ExecuteFlowAsync(instance);
-
-            return instance;
-        }
-        catch
-        {
-            _globalConcurrencyLimiter.Release();
-            throw;
+            catch (OperationCanceledException) { break; }
+            catch (Exception) { /* Log error */ }
         }
     }
 
-    private async Task ExecuteFlowAsync(FlowInstance instance)
+    private async Task ExecuteFlowWithIsolationAsync(FlowInstance instance)
     {
         try
         {
-            // 创建 DAG 执行器，限制每个 Flow 的节点并发度
+            instance.MarkInit();
+
             var executor = new DagExecutor(_maxNodeConcurrencyPerFlow);
-
-            // 创建链接的取消令牌
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                instance.CancellationTokenSource.Token,
-                instance.Context.Token);
+                instance.Cts.Token, instance.Context.Token, _schedulerCts.Token);
 
-            // 执行 DAG
+            instance.MarkRunning();
             await executor.ExecuteAsync(instance.RuntimeGraph, instance.Context);
 
-            instance.MarkCompleted();
+            if (instance.Status == FlowStatus.Cancelling)
+                instance.TransitionTo(FlowStatus.Cancelled);
+            else
+                instance.MarkCompleted();
         }
         catch (OperationCanceledException)
         {
-            instance.MarkCancelled();
+            if (instance.Status != FlowStatus.Cancelling && instance.Status != FlowStatus.Cancelled)
+                instance.TransitionTo(FlowStatus.Cancelled, "Operation cancelled");
         }
         catch (Exception ex)
         {
@@ -87,59 +114,116 @@ public class FlowScheduler : IDisposable
         }
         finally
         {
-            _runningFlows.TryRemove(instance.Id, out _);
-            _globalConcurrencyLimiter.Release();
+            _concurrencyLimiter.Release();
         }
     }
 
-    public bool TryGetFlow(string flowId, out FlowInstance? instance)
-    {
-        return _runningFlows.TryGetValue(flowId, out instance);
-    }
+    #endregion
 
-    public bool CancelFlow(string flowId)
+    #region Control Operations
+
+    public bool PauseFlow(string flowId)
     {
-        if (_runningFlows.TryGetValue(flowId, out var instance) && instance != null)
-        {
-            instance.Cancel();
-            return true;
-        }
+        if (_flows.TryGetValue(flowId, out var instance))
+            return instance.Pause();
         return false;
     }
 
-    public async Task WaitForFlowAsync(string flowId)
+    public bool ResumeFlow(string flowId)
     {
-        if (_runningFlows.TryGetValue(flowId, out var instance) && instance?.ExecutionTask != null)
-        {
-            await instance.ExecutionTask;
-        }
+        if (_flows.TryGetValue(flowId, out var instance))
+            return instance.Resume();
+        return false;
     }
 
-    public async Task WaitForAllFlowsAsync()
+    public bool CancelFlow(string flowId, string? reason = null)
     {
-        var tasks = _runningFlows.Values
+        if (_flows.TryGetValue(flowId, out var instance))
+            return instance.Cancel(reason);
+        return false;
+    }
+
+    public void CancelAllFlows(string? reason = null)
+    {
+        foreach (var flow in _flows.Values.Where(f => !f.IsFinalState))
+            flow.Cancel(reason);
+    }
+
+    #endregion
+
+    #region Query & Monitoring
+
+    public bool TryGetFlow(string flowId, out FlowInstance? instance) => _flows.TryGetValue(flowId, out instance);
+
+    public FlowInstance? GetFlow(string flowId) => _flows.GetValueOrDefault(flowId);
+
+    public async Task WaitForFlowAsync(string flowId, CancellationToken token = default)
+    {
+        if (_flows.TryGetValue(flowId, out var instance) && instance.ExecutionTask != null)
+            await instance.ExecutionTask.WaitAsync(token);
+    }
+
+    public async Task WaitForAllFlowsAsync(CancellationToken token = default)
+    {
+        var tasks = _flows.Values
             .Where(f => f.ExecutionTask != null)
             .Select(f => f.ExecutionTask!)
             .ToArray();
 
         if (tasks.Length > 0)
-        {
-            await Task.WhenAll(tasks);
-        }
+            await Task.WhenAll(tasks).WaitAsync(token);
     }
+
+    public FlowStats[] GetAllStatistics() => _flows.Values.Select(f => f.GetStats()).ToArray();
+
+    public void CleanupCompletedFlows(TimeSpan? maxAge = null)
+    {
+        var cutoff = DateTime.UtcNow - (maxAge ?? TimeSpan.FromHours(1));
+        var toRemove = _flows.Values
+            .Where(f => f.IsFinalState && f.EndTime < cutoff)
+            .Select(f => f.Id)
+            .ToList();
+
+        foreach (var id in toRemove)
+            _flows.TryRemove(id, out _);
+    }
+
+    #endregion
+
+    #region IDisposable
 
     public void Dispose()
     {
         if (_disposed) return;
-
         _disposed = true;
 
-        // 取消所有运行中的 Flow
-        foreach (var flow in _runningFlows.Values)
-        {
-            flow.Cancel();
-        }
+        _schedulerCts.Cancel();
+        CancelAllFlows("Scheduler disposed");
 
-        _globalConcurrencyLimiter.Dispose();
+        try { _dispatchTask.Wait(TimeSpan.FromSeconds(5)); }
+        catch { /* ignore */ }
+
+        _schedulerCts.Dispose();
+        _concurrencyLimiter.Dispose();
+
+        foreach (var flow in _flows.Values)
+            flow.Dispose();
     }
+
+    #endregion
+}
+
+/// <summary>
+/// 调度器统计信息
+/// </summary>
+public class SchedulerStatistics
+{
+    public int TotalFlows { get; set; }
+    public int RunningFlows { get; set; }
+    public int PendingFlows { get; set; }
+    public int CompletedFlows { get; set; }
+    public int FailedFlows { get; set; }
+    public int CancelledFlows { get; set; }
+    public int MaxConcurrency { get; set; }
+    public int AvailableSlots { get; set; }
 }

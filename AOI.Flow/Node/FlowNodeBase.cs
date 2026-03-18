@@ -5,6 +5,9 @@ using AOI.Flow.Recipe;
 
 namespace AOI.Flow.Node;
 
+/// <summary>
+/// Flow 节点基类 - 工业级实现（支持状态机、重试、超时）
+/// </summary>
 public abstract class FlowNodeBase : IFlowNode
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -19,38 +22,66 @@ public abstract class FlowNodeBase : IFlowNode
     /// </summary>
     public virtual string NodeType => GetType().Name;
 
+    /// <summary>
+    /// 节点执行选项（可在子类中覆盖）
+    /// </summary>
+    protected virtual NodeExecutionOptions ExecutionOptions => NodeExecutionOptions.Default;
+
     public async Task<NodeResult> ExecuteAsync(FlowContext context)
     {
         var startTime = DateTime.UtcNow;
-        NodeResult result;
 
-        try
+        // 创建节点执行上下文
+        var nodeExecContext = new NodeExecutionContext(Id, NodeType, context, ExecutionOptions);
+
+        // 创建状态机
+        var stateMachine = new NodeStateMachine(nodeExecContext);
+
+        // 绑定状态变更事件到 Flow 实例
+        if (!string.IsNullOrEmpty(context.FlowInstanceId))
         {
-            Logger.Info($"Node Start {Id} ({DisplayName})");
-
-            // 发布节点开始事件
-            await PublishNodeStartedAsync(context);
-
-            result = await OnExecute(context);
-
-            // 发布节点完成事件
-            await PublishNodeCompletedAsync(context, result, startTime);
+            stateMachine.StateChanged += (s, e) =>
+            {
+                // 通知 FlowInstance 节点状态变更
+                if (e.NewStatus == NodeExecutionStatus.Running)
+                    context.Data[$"node:{Id}:start"] = DateTime.UtcNow;
+                else if (e.NewStatus is NodeExecutionStatus.Success or NodeExecutionStatus.Failed or NodeExecutionStatus.Skipped)
+                    context.Data[$"node:{Id}:end"] = DateTime.UtcNow;
+            };
         }
-        catch (Exception ex)
+
+        // 发布节点开始事件
+        await PublishNodeStartedAsync(context);
+
+        // 使用状态机执行节点
+        var result = await stateMachine.ExecuteAsync(async (ct) =>
         {
-            Logger.Error(ex, $"FlowNode {Id} Error");
+            try
+            {
+                Logger.Info($"Node [{Id}] {DisplayName} - Executing...");
+                var nodeResult = await OnExecute(context);
 
-            result = NodeResult.Fail(ex.Message);
+                // 记录执行数据
+                nodeResult.RetryCount = nodeExecContext.CurrentAttempt - 1;
+                nodeResult.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
-            // 发布节点失败事件
-            await PublishNodeCompletedAsync(context, result, startTime);
-        }
+                return nodeResult;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Node [{Id}] {DisplayName} - Execution error");
+                return NodeResult.FromException(ex);
+            }
+        });
+
+        // 发布节点完成事件
+        var executionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+        await PublishNodeCompletedAsync(context, result, executionTimeMs);
 
         return result;
     }
 
-    protected abstract Task<NodeResult> OnExecute(
-        FlowContext context);
+    protected abstract Task<NodeResult> OnExecute(FlowContext context);
 
     #region Recipe参数访问辅助方法
 
@@ -180,8 +211,14 @@ public abstract class FlowNodeBase : IFlowNode
     {
         if (context.EventBus == null) return Task.CompletedTask;
 
-        // TODO: 发布节点开始事件
-        return Task.CompletedTask;
+        return context.EventBus.PublishAsync(new FlowNodeStartedEvent
+        {
+            Source = Id,
+            FlowInstanceId = context.FlowInstanceId,
+            NodeType = NodeType,
+            RecipeId = context.Recipe?.Id,
+            ProductId = context.ProductId
+        }, context.Token);
     }
 
     /// <summary>
@@ -190,11 +227,9 @@ public abstract class FlowNodeBase : IFlowNode
     private async Task PublishNodeCompletedAsync(
         FlowContext context,
         NodeResult result,
-        DateTime startTime)
+        double executionTimeMs)
     {
         if (context.EventBus == null) return;
-
-        var executionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
         await context.EventBus.PublishAsync(new FlowNodeCompletedEvent
         {

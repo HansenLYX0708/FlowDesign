@@ -1,3 +1,5 @@
+using AOI.Flow.Engine;
+
 namespace AOI.Flow.EventBus;
 
 #region 设备触发事件
@@ -211,6 +213,21 @@ public class FlowStartedEvent : IFlowEvent
 }
 
 /// <summary>
+/// Flow节点开始执行事件
+/// </summary>
+public class FlowNodeStartedEvent : IFlowEvent
+{
+    public Guid EventId { get; } = Guid.NewGuid();
+    public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
+    public string Source { get; set; } = string.Empty; // Node ID
+    public string? RecipeId { get; set; }
+    public string? ProductId { get; set; }
+
+    public string FlowInstanceId { get; set; } = string.Empty;
+    public string NodeType { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Flow节点执行完成事件
 /// </summary>
 public class FlowNodeCompletedEvent : IFlowEvent
@@ -243,6 +260,21 @@ public class FlowCompletedEvent : IFlowEvent
     public bool IsSuccess { get; set; }
     public double TotalExecutionTimeMs { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Flow状态变更事件
+/// </summary>
+public class FlowStatusChangedEvent : IFlowEvent
+{
+    public Guid EventId { get; } = Guid.NewGuid();
+    public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
+    public string Source { get; set; } = string.Empty;
+    public string? RecipeId { get; set; }
+    public string? ProductId { get; set; }
+
+    public FlowStatus OldStatus { get; set; }
+    public FlowStatus NewStatus { get; set; }
 }
 
 #endregion

@@ -83,7 +83,7 @@ public class FlowEngine : IDisposable
         };
 
         // 通过调度器启动 Flow
-        var instance = await _scheduler.StartFlowAsync(flowDefinition, context);
+        var instance = await _scheduler.ScheduleFlowAsync(flowDefinition, context);
 
         // 设置Flow实例ID到Context
         context.FlowInstanceId = instance.Id;
@@ -113,7 +113,7 @@ public class FlowEngine : IDisposable
                     FlowDefinitionName = flowDefinition.Name,
                     IsSuccess = instance.Status == FlowStatus.Completed,
                     TotalExecutionTimeMs = instance.EndTime.HasValue
-                        ? (instance.EndTime.Value - instance.StartTime).TotalMilliseconds
+                        ? (instance.EndTime.Value - instance.StartTime!.Value).TotalMilliseconds
                         : 0
                 }, CancellationToken.None);
             }
@@ -157,7 +157,7 @@ public class FlowEngine : IDisposable
         };
 
         // 通过调度器启动 Flow
-        return await _scheduler.StartFlowAsync(definition, context);
+        return await _scheduler.ScheduleFlowAsync(definition, context);
     }
 
     /// <summary>
